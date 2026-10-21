@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attendance Portal</title>
+<style>
+:root{--bg:#0f1030;--panel:#1a1b4b;--panel2:#23255f;--line:#3a3d85;--text:#eef0ff;--mute:#a4a8d8;--accent:#8b7bff;--accent2:#4cc9f0;--ok:#2fd18b;--bad:#ff5d73}
+*{box-sizing:border-box;margin:0}
+body{font-family:"Segoe UI",system-ui,sans-serif;background:radial-gradient(circle at 15% 10%,#2b2a7a,transparent 45%),radial-gradient(circle at 90% 90%,#1b4d8a,transparent 40%),var(--bg);color:var(--text);min-height:100vh}
+.hide{display:none!important}
+.center{min-height:100vh;display:grid;place-items:center;padding:20px}
+.card{background:rgba(26,27,75,.85);border:1px solid var(--line);border-radius:18px;padding:28px;backdrop-filter:blur(8px)}
+.login{width:100%;max-width:380px}
+.login h1{font-size:1.7rem;margin-bottom:6px}
+.login p{color:var(--mute);margin-bottom:20px;font-size:.95rem}
+label{display:block;font-size:.85rem;color:var(--mute);margin:12px 0 5px}
+input,select{width:100%;padding:11px 13px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:.95rem}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent2);outline-offset:1px}
+button{cursor:pointer;border:0;border-radius:10px;padding:11px 18px;font-size:.95rem;font-weight:600;color:#fff;background:linear-gradient(135deg,var(--accent),#5b6cff);transition:transform .15s,filter .15s}
+button:hover{transform:translateY(-1px);filter:brightness(1.1)}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+button.danger{background:linear-gradient(135deg,#ff5d73,#d6336c)}
+button.full{width:100%;margin-top:20px}
+.err{color:var(--bad);font-size:.88rem;margin-top:12px;min-height:1em}
+header{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:16px 24px;border-bottom:1px solid var(--line);background:rgba(15,16,48,.7);flex-wrap:wrap}
+header h2{font-size:1.2rem}
+header small{color:var(--mute)}
+.nav{display:flex;gap:8px;flex-wrap:wrap;padding:18px 24px 0}
+.nav button{background:var(--panel);border:1px solid var(--line)}
+.nav button.on{background:linear-gradient(135deg,var(--accent),#5b6cff);border-color:transparent}
+main{padding:20px 24px 40px;max-width:980px;margin:auto}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.bar{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+table{width:100%;border-collapse:collapse;margin-top:16px;font-size:.92rem}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line)}
+th{color:var(--mute);font-weight:600}
+.tw{overflow-x:auto}
+.badge{padding:3px 12px;border-radius:99px;font-size:.8rem;font-weight:700}
+.P{background:rgba(47,209,139,.18);color:var(--ok)}
+.A{background:rgba(255,93,115,.18);color:var(--bad)}
+.N{background:rgba(164,168,216,.18);color:var(--mute)}
+.pick label{display:inline-flex;gap:5px;align-items:center;margin:0 12px 0 0;color:var(--text)}
+.pick input{width:auto}
+.stats{display:flex;gap:12px;margin:14px 0;flex-wrap:wrap}
+.stat{flex:1;min-width:110px;background:var(--panel2);border-radius:12px;padding:14px}
+.stat b{font-size:1.5rem;display:block}
+.stat span{color:var(--mute);font-size:.82rem}
+.asg{background:var(--panel2);border-radius:12px;padding:14px;margin-top:12px}
+.asg img{max-width:100%;max-height:260px;border-radius:8px;margin-top:10px}
+.asg a{color:var(--accent2);font-weight:600}
+.msg{margin-top:12px;color:var(--ok);font-size:.9rem;min-height:1em}
+.empty{color:var(--mute);margin-top:16px}
+h3{margin-bottom:4px}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginView" class="center">
+  <div class="card login">
+    <h1>Attendance Portal</h1>
+    <p>Log in as teacher or student.</p>
+    <label for="lu">Username</label><input id="lu" autocomplete="username">
+    <label for="lp">Password</label><input id="lp" type="password" autocomplete="current-password">
+    <button class="full" onclick="login()">Log in</button>
+    <div class="err" id="lerr"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appView" class="hide">
+  <header><div><h2 id="who"></h2><small id="role"></small></div>
+    <div style="display:flex;gap:8px"><button class="ghost" onclick="backup()">Download JSON</button><button class="ghost" onclick="logout()">Log out</button></div>
+  </header>
+  <div class="nav" id="nav"></div>
+  <main><div class="card" id="panel"></div></main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const ADMIN={username:'admin',password:'admin123'}; // change teacher login here
+const KEY='attDB';
+const COURSES=['B.Tech','BCA','MCA','M.Tech','BBA','MBA','B.Com','B.Sc','M.Sc','BA','MA','Diploma'];
+const SECTIONS=['A','B','C','D','E'];
+const sel=(id,list,ph)=>`<select id="${id}"><option value="">${ph}</option>${list.map(v=>`<option>${v}</option>`).join('')}</select>`;
+const ckey=s=>String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm=s=>String(s).trim().toLowerCase();
+const today=()=>{const d=new Date();return new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,10)};
+let db;
+try{db=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+db=db||{students:[],attendance:{},assignments:[]};
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify(db));return true}
+  catch(e){alert('Storage is full. Delete some assignments or use smaller files.');return false}
+}
+let user=null;
+try{user=JSON.parse(sessionStorage.getItem('attUser'))}catch(e){}
+
+function login(){
+  const u=$('lu').value.trim(),p=$('lp').value;
+  if(u===ADMIN.username&&p===ADMIN.password) user={role:'admin',name:'Teacher'};
+  else{
+    const s=db.students.find(x=>norm(x.username)===norm(u)&&x.password===p);
+    if(!s){$('lerr').textContent='Wrong username or password. Check both and try again.';return}
+    user={role:'student',id:s.id,name:s.name};
+  }
+  sessionStorage.setItem('attUser',JSON.stringify(user));start();
+}
+function logout(){sessionStorage.removeItem('attUser');user=null;$('lu').value=$('lp').value='';$('lerr').textContent='';$('appView').classList.add('hide');$('loginView').classList.remove('hide')}
+function backup(){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(db,null,2)],{type:'application/json'}));
+  a.download='attendance-data.json';a.click();
+}
+$('lp').addEventListener('keydown',e=>{if(e.key==='Enter')login()});
+
+const tabs={
+  admin:[['Add student',addStudentV],['Add attendance',attV],['Assignments',asgAdminV],['Delete student',delV]],
+  student:[['My attendance',myAttV],['My assignments',myAsgV]]
+};
+function start(){
+  $('loginView').classList.add('hide');$('appView').classList.remove('hide');
+  $('who').textContent='Hello, '+user.name;
+  $('role').textContent=user.role==='admin'?'Teacher portal':'Student portal';
+  $('nav').innerHTML='';
+  tabs[user.role].forEach(([t,f],i)=>{
+    const b=document.createElement('button');b.textContent=t;
+    b.onclick=()=>{[...$('nav').children].forEach(x=>x.classList.remove('on'));b.classList.add('on');f()};
+    $('nav').appendChild(b);
+  });
+  $('nav').children[0].click();
+}
+const panel=h=>$('panel').innerHTML=h;
+
+/* ---------- TEACHER ---------- */
+function addStudentV(){
+  panel(`<h3>Add student record</h3>
+  <div class="row">
+   <div><label>Student name</label><input id="sn"></div>
+   <div><label>Course</label>${sel('sc',COURSES,'Select course')}</div>
+   <div><label>Section</label>${sel('ss',SECTIONS,'Select section')}</div>
+   <div><label>Roll no</label><input id="sr"></div>
+   <div><label>Login username</label><input id="su"></div>
+   <div><label>Login password</label><input id="sp"></div>
+  </div>
+  <div class="bar"><button onclick="addStudent()">Save student</button></div>
+  <div class="msg" id="m"></div>
+  <hr style="border:0;border-top:1px solid var(--line);margin:26px 0">
+  <h3>Add many students from Excel</h3>
+  <p class="empty" style="margin-top:6px">Columns: Name, Course, Section, RollNo, Username, Password. Username and password are optional. Accepts .xlsx, .xls and .csv.</p>
+  <div class="bar"><input id="bf" type="file" accept=".xlsx,.xls,.csv" style="max-width:300px"><button onclick="bulkAdd()">Import students</button><button class="ghost" onclick="template()">Download template</button><button class="ghost" onclick="demo()">Add demo students</button></div>
+  <div class="msg" id="bm"></div>`);
+}
+function addStudent(){
+  const s={id:Date.now().toString(36),name:$('sn').value.trim(),course:$('sc').value.trim(),sec:$('ss').value.trim(),roll:$('sr').value.trim(),username:$('su').value.trim(),password:$('sp').value};
+  const m=$('m');m.style.color='var(--bad)';
+  if(Object.values(s).some(v=>!v)){m.textContent='Fill in every field before saving.';return}
+  if(norm(s.username)===norm(ADMIN.username)||db.students.some(x=>norm(x.username)===norm(s.username))){m.textContent='That username is taken. Choose another.';return}
+  if(db.students.some(x=>norm(x.course)===norm(s.course)&&norm(x.sec)===norm(s.sec)&&norm(x.roll)===norm(s.roll))){m.textContent='This roll no already exists in that course and section.';return}
+  db.students.push(s);
+  if(save()){addStudentV();$('m').style.color='var(--ok)';$('m').textContent=s.name+' was added.'}
+}
+function bulkMsg(ok,lines,c){const m=$('bm');m.style.color=c;m.innerHTML=lines.map(esc).join('<br>')}
+function template(){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['Name,Course,Section,RollNo,Username,Password\nRiya Jain,BCA,A,501,riya501,pass123\n'],{type:'text/csv'}));
+  a.download='students-template.csv';a.click();
+}
+function parseCsv(t){
+  const L=t.replace(/^\uFEFF/,'').split(/\r?\n/).filter(x=>x.trim()).map(l=>l.split(',').map(c=>c.trim().replace(/^"|"$/g,'')));
+  const h=L.shift()||[];return L.map(c=>Object.fromEntries(h.map((k,i)=>[k,c[i]||''])));
+}
+function bulkAdd(){
+  const f=$('bf').files[0];
+  if(!f){bulkMsg(0,['Choose an Excel or CSV file first.'],'var(--bad)');return}
+  const csv=/\.csv$/i.test(f.name);
+  if(!window.XLSX&&!csv){bulkMsg(0,['Excel support did not load (internet is needed). Save the sheet as CSV and import that instead.'],'var(--bad)');return}
+  const r=new FileReader();
+  r.onload=()=>{
+    let rows;
+    try{
+      if(window.XLSX){const wb=XLSX.read(r.result,{type:'array'});rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''})}
+      else rows=parseCsv(new TextDecoder().decode(r.result));
+    }catch(e){bulkMsg(0,['This file could not be read.'],'var(--bad)');return}
+    importRows(rows);
+  };
+  r.readAsArrayBuffer(f);
+}
+function importRows(rows){
+  let ok=0;const bad=[];
+  rows.forEach((o,i)=>{
+    const g={};Object.keys(o).forEach(k=>g[ckey(k)]=String(o[k]).trim());
+    const s={id:Date.now().toString(36)+i,name:g.name||'',course:COURSES.find(c=>ckey(c)===ckey(g.course||''))||'',sec:(g.section||g.sec||'').toUpperCase(),roll:g.rollno||g.roll||g.rollnumber||''};
+    s.username=g.username||ckey(s.course)+ckey(s.roll);s.password=g.password||s.roll;
+    const why=!s.name||!s.roll?'name or roll no is missing':!s.course?'course is not in the list':!SECTIONS.includes(s.sec)?'section must be '+SECTIONS.join(', '):
+      (norm(s.username)===norm(ADMIN.username)||db.students.some(x=>norm(x.username)===norm(s.username)))?'username is taken':
+      db.students.some(x=>norm(x.course)===norm(s.course)&&norm(x.sec)===norm(s.sec)&&norm(x.roll)===norm(s.roll))?'roll no already exists in this class':'';
+    if(why)bad.push('Row '+(i+2)+': '+why);else{db.students.push(s);ok++}
+  });
+  if(ok&&!save())return;
+  bulkMsg(ok,[ok+' added, '+bad.length+' skipped.',...bad.slice(0,6),bad.length>6?'...and '+(bad.length-6)+' more.':''].filter(Boolean),ok?'var(--ok)':'var(--bad)');
+}
+function demo(){
+  const D=[['Aarav Sharma','BCA','A','101'],['Diya Verma','BCA','A','102'],['Kabir Singh','BCA','A','103'],['Meera Gupta','BCA','B','201'],['Rohan Mehta','B.Tech','A','301'],['Ananya Rao','B.Tech','A','302'],['Ishaan Khan','MCA','A','401'],['Sara Ali','MCA','A','402']];
+  let n=0;
+  D.forEach(([name,course,sec,roll],i)=>{
+    const u='demo'+(i+1);if(db.students.some(x=>x.username===u))return;
+    db.students.push({id:u,name,course,sec,roll,username:u,password:'1234'});n++;
+  });
+  if(n&&!save())return;
+  bulkMsg(n,[n?n+' demo students added.':'Demo students are already added.','Log in as demo1 to demo8 with password 1234.'],'var(--ok)');
+}
+function classList(c,s){return db.students.filter(x=>norm(x.course)===norm(c)&&norm(x.sec)===norm(s)).sort((a,b)=>a.roll.localeCompare(b.roll,undefined,{numeric:true}))}
+function attV(){
+  panel(`<h3>Add attendance</h3>
+  <div class="row">
+   <div><label>Course</label>${sel('ac',COURSES,'Select course')}</div>
+   <div><label>Class (section)</label>${sel('as',SECTIONS,'Select section')}</div>
+   <div><label>Date</label><input id="ad" type="date" value="${today()}"></div>
+  </div>
+  <div class="bar"><button onclick="showAtt()">Show data</button></div>
+  <div id="al"></div>`);
+}
+function showAtt(){
+  const c=$('ac').value,s=$('as').value,d=$('ad').value;
+  if(!c.trim()||!s.trim()||!d){$('al').innerHTML='<p class="empty">Enter course, class and date first.</p>';return}
+  const list=classList(c,s),rec=db.attendance[norm(c)+'|'+norm(s)+'|'+d]||{};
+  if(!list.length){$('al').innerHTML='<p class="empty">No students found for this course and class.</p>';return}
+  $('al').innerHTML=`<div class="tw"><table><tr><th>Roll</th><th>Name</th><th>Status</th></tr>`+
+   list.map(x=>`<tr><td>${esc(x.roll)}</td><td>${esc(x.name)}</td><td class="pick">
+    <label><input type="radio" name="r_${x.id}" value="P" ${rec[x.id]!=='A'?'checked':''}>Present</label>
+    <label><input type="radio" name="r_${x.id}" value="A" ${rec[x.id]==='A'?'checked':''}>Absent</label></td></tr>`).join('')+
+   `</table></div><div class="bar"><button onclick="saveAtt()">Save data</button></div><div class="msg" id="m"></div>`;
+}
+function saveAtt(){
+  const c=$('ac').value,s=$('as').value,d=$('ad').value,rec={};
+  classList(c,s).forEach(x=>rec[x.id]=document.querySelector(`input[name="r_${x.id}"]:checked`).value);
+  db.attendance[norm(c)+'|'+norm(s)+'|'+d]=rec;
+  if(save())$('m').textContent='Attendance for '+d+' was saved.';
+}
+function asgAdminV(){
+  panel(`<h3>Assignments</h3>
+  <div class="row">
+   <div><label>Title</label><input id="gt"></div>
+   <div><label>Course</label>${sel('gc',COURSES,'Select course')}</div>
+   <div><label>Section</label>${sel('gs',SECTIONS,'Select section')}</div>
+   <div><label>File (PDF or image)</label><input id="gf" type="file" accept="application/pdf,image/*"></div>
+  </div>
+  <div class="bar"><button onclick="addAsg()">Upload assignment</button></div>
+  <div class="msg" id="m"></div><div id="gl"></div>`);
+  listAsg(db.assignments,'gl',true);
+}
+function addAsg(){
+  const t=$('gt').value.trim(),c=$('gc').value.trim(),s=$('gs').value.trim(),f=$('gf').files[0],m=$('m');
+  m.style.color='var(--bad)';
+  if(!t||!c||!s||!f){m.textContent='Fill in every field and choose a file.';return}
+  if(!(f.type==='application/pdf'||f.type.startsWith('image/'))){m.textContent='Only PDF and image files are allowed.';return}
+  if(f.size>2e6){m.textContent='File is over 2 MB. Choose a smaller file.';return}
+  const r=new FileReader();
+  r.onload=()=>{
+    db.assignments.push({id:Date.now().toString(36),title:t,course:c,sec:s,name:f.name,type:f.type,data:r.result,date:today()});
+    if(save()){asgAdminV();$('m').style.color='var(--ok)';$('m').textContent='Assignment uploaded.'}else db.assignments.pop();
+  };
+  r.readAsDataURL(f);
+}
+function listAsg(list,target,admin){
+  $(target).innerHTML=list.length?list.map(a=>`<div class="asg"><b>${esc(a.title)}</b>
+   <div style="color:var(--mute);font-size:.85rem">${esc(a.course)} · Section ${esc(a.sec)} · ${a.date}</div>
+   ${a.type.startsWith('image/')?`<img src="${a.data}" alt="${esc(a.title)}">`:''}
+   <div class="bar" style="margin-top:10px"><a href="${a.data}" download="${esc(a.name)}">Download ${esc(a.name)}</a>
+   ${a.type==='application/pdf'?`<a href="${a.data}" target="_blank">Open PDF</a>`:''}
+   ${admin?`<button class="danger" onclick="delAsg('${a.id}')">Delete</button>`:''}</div></div>`).join(''):'<p class="empty">No assignments yet.</p>';
+}
+function delAsg(id){if(confirm('Delete this assignment?')){db.assignments=db.assignments.filter(a=>a.id!==id);save();asgAdminV()}}
+function delV(){
+  panel(`<h3>Delete student record</h3><label>Search by name, roll no or username</label><input id="q" oninput="delList()"><div id="dl"></div>`);delList();
+}
+function delList(){
+  const q=norm($('q').value);
+  const l=db.students.filter(x=>[x.name,x.roll,x.username].some(v=>norm(v).includes(q)));
+  $('dl').innerHTML=l.length?`<div class="tw"><table><tr><th>Roll</th><th>Name</th><th>Course</th><th>Section</th><th></th></tr>`+
+   l.map(x=>`<tr><td>${esc(x.roll)}</td><td>${esc(x.name)}</td><td>${esc(x.course)}</td><td>${esc(x.sec)}</td><td><button class="danger" onclick="delStudent('${x.id}')">Delete</button></td></tr>`).join('')+'</table></div>':'<p class="empty">No students found.</p>';
+}
+function delStudent(id){
+  const s=db.students.find(x=>x.id===id);
+  if(!confirm('Delete '+s.name+' and all of their attendance records?'))return;
+  db.students=db.students.filter(x=>x.id!==id);
+  Object.values(db.attendance).forEach(r=>delete r[id]);
+  save();delList();
+}
+
+/* ---------- STUDENT ---------- */
+function me(){return db.students.find(x=>x.id===user.id)}
+function myRecords(){
+  const s=me();if(!s)return[];
+  const pre=norm(s.course)+'|'+norm(s.sec)+'|';
+  return Object.keys(db.attendance).filter(k=>k.startsWith(pre)&&db.attendance[k][s.id]).map(k=>({date:k.slice(pre.length),st:db.attendance[k][s.id]})).sort((a,b)=>b.date.localeCompare(a.date));
+}
+function myAttV(){
+  const s=me();
+  if(!s){panel('<p class="empty">Your record was removed. Ask your teacher.</p>');return}
+  const r=myRecords(),t=r.find(x=>x.date===today()),p=r.filter(x=>x.st==='P').length;
+  const pc=r.length?Math.round(p/r.length*100):0;
+  panel(`<h3>${esc(s.name)}</h3><div style="color:var(--mute)">${esc(s.course)} · Section ${esc(s.sec)} · Roll ${esc(s.roll)}</div>
+  <div class="stats"><div class="stat"><span>Today</span><b><span class="badge ${t?t.st:'N'}">${t?(t.st==='P'?'Present':'Absent'):'Not marked'}</span></b></div>
+  <div class="stat"><span>Present</span><b>${p}</b></div><div class="stat"><span>Absent</span><b>${r.length-p}</b></div><div class="stat"><span>Attendance</span><b>${pc}%</b></div></div>
+  <h3 style="margin-top:20px">All attendance</h3>
+  ${r.length?`<div class="tw"><table><tr><th>Date</th><th>Status</th></tr>${r.map(x=>`<tr><td>${x.date}</td><td><span class="badge ${x.st}">${x.st==='P'?'Present':'Absent'}</span></td></tr>`).join('')}</table></div>`:'<p class="empty">No attendance has been marked for you yet.</p>'}`);
+}
+function myAsgV(){
+  const s=me();
+  panel('<h3>My assignments</h3><div id="gl"></div>');
+  listAsg(s?db.assignments.filter(a=>norm(a.course)===norm(s.course)&&norm(a.sec)===norm(s.sec)):[],'gl',false);
+}
+
+if(user)start();
+</script>
+</body>
+</html>
